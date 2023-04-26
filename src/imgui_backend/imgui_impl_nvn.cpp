@@ -337,9 +337,9 @@ namespace ImguiNvnBackend {
 
         // load switch font data into imgui
 
-        if (!loadSystemFont()) {
-            Logger::log("Failed to load Switch System Font! Falling back to default ImGui font.\n");
-        }
+//        if (!loadSystemFont()) {
+//            Logger::log("Failed to load Switch System Font! Falling back to default ImGui font.\n");
+//        }
 
         io.Fonts->AddFontDefault();
 

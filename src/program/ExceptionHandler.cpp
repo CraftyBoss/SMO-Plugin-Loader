@@ -1,23 +1,10 @@
 #include "logger/Logger.hpp"
 #include <cstdio>
 #include <hook/replace.hpp>
+#include <init.h>
 #include <program/ExceptionHandler.h>
 #include <result.hpp>
-
-char* getFileNameFromPath(char* path)
-{
-    if(path == nullptr)
-        return nullptr;
-
-    char* pFileName = path;
-    for(char* pCur = path; *pCur != '\0'; pCur++)
-    {
-        if( *pCur == '/' || *pCur == '\\' )
-            pFileName = pCur+1;
-    }
-
-    return pFileName;
-}
+#include "helpers/fsHelper.h"
 
 bool isIllegalSymbolAddress(ulong sym, ulong addr) {
     return sym == 0 || (addr - sym) > nn::diag::GetSymbolSize(sym);
@@ -52,7 +39,7 @@ void printTraceEntry(const char *traceName, ulong addr, nn::diag::ModuleInfo *mo
     if(isIllegalSymbolAddress(symAddr, addr)) {
 
         if(findContainModule(containInfo, moduleInfos, moduleCount, addr)) {
-            Logger::log("  %s: 0x%p (unknown) (%s + 0x%zx)\n", traceName, addr, getFileNameFromPath(containInfo.mPath), addr - containInfo.mBaseAddr);
+            Logger::log("  %s: 0x%p (unknown) (%s + 0x%zx)\n", traceName, addr, FsHelper::getFileName(containInfo.mPath), addr - containInfo.mBaseAddr);
         }else {
             Logger::log("  %s: 0x%p (unknown)\n", traceName, addr);
         }
@@ -62,7 +49,7 @@ void printTraceEntry(const char *traceName, ulong addr, nn::diag::ModuleInfo *mo
         findContainModule(containInfo, moduleInfos, moduleCount, addr);
 
         Logger::log("  %s: 0x%p (%s + 0x%zx) (%s + 0x%zx)\n", traceName, addr, symbol, addr - symAddr,
-                    getFileNameFromPath(containInfo.mPath), addr - containInfo.mBaseAddr);
+                    FsHelper::getFileName(containInfo.mPath), addr - containInfo.mBaseAddr);
 
     }
 }
@@ -70,6 +57,7 @@ void printTraceEntry(const char *traceName, ulong addr, nn::diag::ModuleInfo *mo
 void exception_handler(nn::os::UserExceptionInfo *info) {
     Logger::log("Exception Caught! Core: %u\n", nn::os::GetCurrentCoreNumber());
     Logger::log("Type: %u\n", info->ErrorDescription);
+    Logger::log("Standard Allocator Free Size: %fmb\n", BYTESTOMB(nn::init::GetAllocator()->GetTotalFreeSize()));
 
     // Module Data (used for module dump and stack trace offsets)
 
@@ -121,10 +109,49 @@ void exception_handler(nn::os::UserExceptionInfo *info) {
 
     for (int i = 0; i < moduleCount; ++i) {
         nn::diag::ModuleInfo &curInfo = moduleInfos[i];
-        Logger::log("  0x%P 0x%P %s\n", curInfo.mBaseAddr, curInfo.mSize, getFileNameFromPath(curInfo.mPath));
+        Logger::log("  0x%P 0x%P %s\n", curInfo.mBaseAddr, curInfo.mSize, FsHelper::getFileName(curInfo.mPath));
     }
 
     Logger::log("\n");
+}
+
+void exceptionHandlerNoInfo() {
+
+    Logger::log("Stack trace:\n");
+
+    nn::diag::ModuleInfo *moduleInfos;
+    u64 bufSize = nn::diag::GetRequiredBufferSizeForGetAllModuleInfo();
+    void *moduleBuffer = alloca(bufSize);
+    int moduleCount = nn::diag::GetAllModuleInfo(&moduleInfos, moduleBuffer, bufSize);
+
+    stack_frame *frame;
+
+    asm("mov %0, fp" : "=r"(frame));
+
+    stack_frame* prevFrame = nullptr;
+    int index = 0;
+    while (frame != nullptr && frame != prevFrame) {
+        MemoryInfo memInfo;
+        u32 pageInfo;
+        if (R_FAILED(svcQueryMemory(&memInfo, &pageInfo, (u64)frame)) || (memInfo.perm & Perm_R) == 0)
+            break;
+        prevFrame = frame;
+
+        char traceName[0x20] = {};
+        sprintf(traceName, "ReturnAddress[%d]", index++);
+
+        printTraceEntry(traceName, frame->lr, moduleInfos, moduleCount);
+        frame = frame->prevFp;
+    }
+
+    Logger::log("Module Info:\n");
+    Logger::log("Number of Modules: %d\n", moduleCount);
+    Logger::log("  %-*s   %-*s   path\n", 16, "base", 16, "size");
+
+    for (int i = 0; i < moduleCount; ++i) {
+        nn::diag::ModuleInfo &curInfo = moduleInfos[i];
+        Logger::log("  0x%P 0x%P %s\n", curInfo.mBaseAddr, curInfo.mSize, FsHelper::getFileName(curInfo.mPath));
+    }
 }
 
 HOOK_DEFINE_REPLACE(ExceptionHandlerStub) {

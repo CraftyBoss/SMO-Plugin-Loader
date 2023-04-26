@@ -6,7 +6,7 @@
 #define EXL_MODULE_NAME_LEN 12
 
 #define EXL_DEBUG
-#define EXL_USE_FAKEHEAP
+//#define EXL_USE_FAKEHEAP
 
 /*
 #define EXL_SUPPORTS_REBOOTPAYLOAD

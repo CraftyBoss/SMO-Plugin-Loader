@@ -8,6 +8,7 @@
 #include "nx/types.h"
 #include "reloc/rtld/ModuleObject.hpp"
 #include "types.h"
+#include "nn/result.h"
 
 namespace nn {
    namespace ro {
@@ -92,6 +93,7 @@ namespace nn {
        };
 
        Result Initialize();
+       void Finalize();
 
        Result LookupSymbol(uintptr_t* pOutAddress, const char* name);
 

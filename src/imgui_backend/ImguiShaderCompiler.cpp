@@ -20,17 +20,17 @@ const char *shaderNames[] = {
         "COMPUTE",
 };
 
-extern "C" void *glslc_Alloc(size_t size, size_t alignment, void *user_data = nullptr) {
+void * glslcAlloc(size_t size, size_t alignment, void *user_data = nullptr) {
 //    Logger::log("Allocating ptr with size: %x aligned by %x\n", size, alignment);
     return nn::init::GetAllocator()->Allocate(ALIGN_UP(size, alignment));
 }
 
-extern "C" void glslc_Free(void *ptr, void *user_data = nullptr) {
+void glslcFree(void *ptr, void *user_data = nullptr) {
 //    Logger::log("Freeing ptr: %p\n", ptr);
     nn::init::GetAllocator()->Free(ptr);
 }
 
-extern "C" void *glslc_Realloc(void *ptr, size_t size, void *user_data = nullptr) {
+void * glslcRealloc(void *ptr, size_t size, void *user_data = nullptr) {
 //    Logger::log("Reallocating ptr: %p to size: %x\n", ptr, size);
     return nn::init::GetAllocator()->Reallocate(ptr, size);
 }
@@ -74,7 +74,7 @@ CompiledData NOINLINE CreateShaderBinary(GLSLCoutput *compileData, const char *s
 
     u8 *rawDataBinary = (u8 *) compileData;
 
-    u8 *binaryBuffer = (u8 *) glslc_Alloc(binarySize, 0x1000);
+    u8 *binaryBuffer = (u8 *)glslcAlloc(binarySize, 0x1000);
     memset(binaryBuffer, 0, binarySize);
 
     u32 curBinaryPos = 0x10;
@@ -131,7 +131,7 @@ const char *GetShaderSource(const char *path) {
 
     long size = 0;
     nn::fs::GetFileSize(&size, handle);
-    char *sourceFile = (char *) glslc_Alloc(size + 1, 8);
+    char *sourceFile = (char *)glslcAlloc(size + 1, 8);
 
     R_ABORT_UNLESS(nn::fs::ReadFile(handle, 0, sourceFile, size))
 
@@ -194,7 +194,7 @@ void ImguiShaderCompiler::InitializeCompiler() {
 
     Logger::log("Setting Glslc Alloc funcs.\n");
 
-    glslcDll->GlslcSetAllocator(glslc_Alloc, glslc_Free, glslc_Realloc, nullptr);
+    glslcDll->GlslcSetAllocator(glslcAlloc, glslcFree, glslcRealloc, nullptr);
 
     Logger::log("Funcs setup.\n");
 }
@@ -245,8 +245,8 @@ CompiledData ImguiShaderCompiler::CompileShader(const char *shaderName) {
     glslcDll->Finalize(); // finalize compiler
 
     // free shader source buffers after compile finishes
-    glslc_Free((void *) shaders[0]);
-    glslc_Free((void *) shaders[1]);
+    glslcFree((void*)shaders[0]);
+    glslcFree((void*)shaders[1]);
 
     return CreateShaderBinary(initInfo.lastCompiledResults->glslcOutput, shaderName, false);
 

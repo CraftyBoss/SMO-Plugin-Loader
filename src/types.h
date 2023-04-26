@@ -47,6 +47,8 @@ typedef unsigned long    undefined8;
 #define ON_INIT         __attribute__((constructor))
 #define NOINLINE        __attribute__((noinline))
 #define NORETURN        __attribute__((noreturn))
+#define EXPORT_SYM      __attribute__ ((visibility ("default")))
+#define STRIP_SYM       __attribute__ ((visibility ("hidden")))
 #define UNREACHABLE __builtin_unreachable()
 #define PAGE_SIZE (0x1000)
 #define ALWAYS_INLINE inline __attribute__((always_inline))
@@ -63,6 +65,8 @@ typedef __builtin_va_list va_list;
 // used to convert macro values to strings
 #define STRINGIFY(x) #x
 #define TOSTRING(x) STRINGIFY(x)
+#define BYTESTOMB(Byte) ((Byte) * 0.00097656) * 0.00097656
+#define MBTOBYTES(Byte) ((Byte) / 0.00097656) / 0.00097656
 
 //using u64 = std::uint64_t;
 //using s64 = std::int64_t;

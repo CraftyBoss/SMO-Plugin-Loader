@@ -6,7 +6,7 @@
 
 #define ISEMU false
 
-char socketPool[0x600000 + 0x20000] __attribute__((aligned(0x1000)));
+char socketPool[0x100000 + 0x1000] __attribute__((aligned(0x1000)));
 
 Logger &Logger::instance() {
     static Logger instance = {};
@@ -29,7 +29,7 @@ nn::Result Logger::init(const char *ip, u16 port) {
 
     nn::nifm::Initialize();
 
-    nn::socket::Initialize(socketPool, 0x600000, 0x20000, 0xE);
+    nn::socket::Initialize(socketPool, 0x100000, 0x1000, 0xE);
 
     nn::nifm::SubmitNetworkRequest();
 

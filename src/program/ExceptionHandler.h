@@ -12,6 +12,8 @@ bool findContainModule(nn::diag::ModuleInfo *result, nn::diag::ModuleInfo *modul
 
 void printTraceEntry(const char *traceName, ulong addr, nn::diag::ModuleInfo *moduleInfos, int moduleCount);
 
+void exceptionHandlerNoInfo();
+
 void installExceptionStub();
 
 struct stack_frame {

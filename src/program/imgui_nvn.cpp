@@ -1,10 +1,11 @@
 #include "imgui_nvn.h"
+#include "helpers/InputHelper.h"
 #include "imgui_backend/imgui_impl_nvn.hpp"
 #include "init.h"
 #include "lib.hpp"
 #include "logger/Logger.hpp"
-#include "helpers/InputHelper.h"
 #include "nvn_CppFuncPtrImpl.h"
+#include <loader/PluginLoader.h>
 
 nvn::Device *nvnDevice;
 nvn::Queue *nvnQueue;
@@ -22,7 +23,8 @@ nvn::WindowSetCropFunc tempSetCropFunc;
 bool hasInitImGui = false;
 
 namespace nvnImGui {
-    ImVector<ProcDrawFunc> drawQueue;
+    ProcDrawFunc drawQueue[100];
+    size_t drawQueueCount = 0;
 }
 
 #define IMGUI_USEEXAMPLE_DRAW false
@@ -169,10 +171,7 @@ HOOK_DEFINE_TRAMPOLINE(NvnBootstrapHook) {
 };
 
 void nvnImGui::addDrawFunc(ProcDrawFunc func) {
-
-    EXL_ASSERT(!drawQueue.contains(func), "Function has already been added to queue!");
-
-    drawQueue.push_back(func);
+    drawQueue[drawQueueCount++] = func;
 }
 
 void nvnImGui::procDraw() {
@@ -180,8 +179,8 @@ void nvnImGui::procDraw() {
     ImguiNvnBackend::newFrame();
     ImGui::NewFrame();
 
-    for (auto drawFunc: drawQueue) {
-        drawFunc();
+    for (size_t i = 0; i < drawQueueCount; i++) {
+        drawQueue[i]();
     }
 
     ImGui::Render();

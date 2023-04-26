@@ -2,19 +2,22 @@
 #include "imgui_backend/imgui_impl_nvn.hpp"
 #include "patches.hpp"
 #include "logger/Logger.hpp"
-#include "fs.h"
+
+#include "nn/fs.h"
+#include "nn/diag.h"
 
 #include <basis/seadRawPrint.h>
-#include <prim/seadSafeString.h>
-#include <resource/seadResourceMgr.h>
+#include <devenv/seadDebugFontMgrNvn.h>
 #include <filedevice/nin/seadNinSDFileDeviceNin.h>
 #include <filedevice/seadFileDeviceMgr.h>
 #include <filedevice/seadPath.h>
-#include <resource/seadArchiveRes.h>
-#include <heap/seadHeapMgr.h>
-#include <devenv/seadDebugFontMgrNvn.h>
 #include <gfx/seadTextWriter.h>
 #include <gfx/seadViewport.h>
+#include <heap/seadHeapMgr.h>
+#include <helpers/fsHelper.h>
+#include <prim/seadSafeString.h>
+#include <resource/seadArchiveRes.h>
+#include <resource/seadResourceMgr.h>
 
 #include "rs/util.hpp"
 
@@ -33,6 +36,7 @@
 #include "game/GameData/GameDataFunction.h"
 
 #include "ExceptionHandler.h"
+#include "loader/PluginLoader.h"
 
 static const char *DBG_FONT_PATH = "DebugData/Font/nvn_font_jis1.ntx";
 static const char *DBG_SHADER_PATH = "DebugData/Font/nvn_font_shader_jis1.bin";
@@ -41,6 +45,108 @@ static const char *DBG_TBL_PATH = "DebugData/Font/nvn_font_jis1_tbl.bin";
 #define IMGUI_ENABLED true
 
 sead::TextWriter *gTextWriter;
+
+void drawSizeInfo(float curSize, float maxSize, const char* name) {
+
+    // convert size to megabytes for readability
+    curSize = BYTESTOMB(curSize);
+    maxSize = BYTESTOMB(maxSize);
+
+    float progress = curSize / maxSize;
+
+    char buf[0x60];
+    sprintf(buf, "%s: %.3fmb/%.3fmb", name, curSize, maxSize);
+    ImGui::PushStyleColor(ImGuiCol_PlotHistogram, IM_COL32(0,200,0,255));
+    ImGui::ProgressBar(progress, ImVec2(-FLT_MIN, 0.f), buf);
+    ImGui::PopStyleColor();
+}
+
+void drawSizeInfo(float curSize, float maxSize) {
+
+    // convert size to megabytes for readability
+    curSize = BYTESTOMB(curSize);
+    maxSize = BYTESTOMB(maxSize);
+
+    float progress = curSize / maxSize;
+
+    char buf[0x60];
+    sprintf(buf, "%.3fmb/%.3fmb", curSize, maxSize);
+    ImGui::PushStyleColor(ImGuiCol_PlotHistogram, IM_COL32(0,200,0,255));
+    ImGui::ProgressBar(progress, ImVec2(-FLT_MIN, 0.f), buf);
+    ImGui::PopStyleColor();
+}
+
+void drawHeapInfo(sead::Heap *heap) {
+    if(!heap)
+        return;
+
+    u64 size = heap->getSize();
+    u64 freeSize = heap->getFreeSize();
+
+    drawSizeInfo(size - freeSize,  size, heap->getName().cstr());
+}
+
+void drawHeapInfoRecursive(sead::Heap *heap) {
+    if(!heap)
+        return;
+
+    char buf[0x60];
+    sprintf(buf, "%s Info", heap->getName().cstr());
+    if(ImGui::TreeNode(buf)) {
+        u64 size = heap->getSize();
+        u64 freeSize = heap->getFreeSize();
+        drawSizeInfo(size - freeSize,  size);
+
+        if(ImGui::TreeNode("Children")) {
+            for (auto &child : heap->mChildren) {
+                drawHeapInfoRecursive(&child);
+            }
+            ImGui::TreePop();
+        }
+
+        ImGui::TreePop();
+    }
+}
+
+void drawPluginDebugWindow() {
+    ImGui::SetNextWindowPos(ImVec2(500, 400), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(400, 200), ImGuiCond_FirstUseEver);
+
+    ImGui::Begin("Plugin Info Window");
+
+    drawHeapInfo(PluginLoader::getHeap());
+
+    if(!PluginLoader::isPluginsLoaded()) {
+        if(ImGui::Button("Load Plugins")) {
+            Logger::log("Loading Game Plugins.\n");
+            PluginLoader::loadPlugins("sd:/smo/PluginData");
+        }
+        ImGui::End();
+        return;
+    }
+
+    if(ImGui::Button("Unload Plugins")) {
+        Logger::log("Unloading Game Plugins.\n");
+        PluginLoader::unloadPlugins();
+    }
+
+    size_t pluginCount = PluginLoader::getPluginCount();
+
+    ImGui::Text("Plugin Count: %zu", pluginCount);
+
+    const char* pluginNames[pluginCount];
+    PluginLoader::getPluginNames(pluginNames);
+
+    if(ImGui::TreeNode("Plugin Info")) {
+        for (int i = 0; i < pluginCount; ++i) {
+            ImGui::BulletText("Plugin: %s", pluginNames[i]);
+        }
+        ImGui::TreePop();
+    }
+
+    ImGui::End();
+
+}
 
 void drawDebugWindow() {
     al::Sequence *curSequence = GameSystemFunction::getGameSystem()->mCurSequence;
@@ -145,7 +251,7 @@ HOOK_DEFINE_TRAMPOLINE(CreateFileDeviceMgr) {
 
         Orig(thisPtr);
 
-        thisPtr->mMountedSd = nn::fs::MountSdCardForDebug("sd").isSuccess();
+        thisPtr->mMountedSd = true;
 
         sead::NinSDFileDevice *sdFileDevice = new sead::NinSDFileDevice();
 
@@ -234,9 +340,7 @@ HOOK_DEFINE_TRAMPOLINE(FileLoaderIsExistArchive) {
 
 HOOK_DEFINE_TRAMPOLINE(GameSystemInit) {
     static void Callback(GameSystem *thisPtr) {
-
         sead::Heap *curHeap = sead::HeapMgr::instance()->getCurrentHeap();
-
         sead::DebugFontMgrJis1Nvn::createInstance(curHeap);
 
         if (al::isExistFile(DBG_SHADER_PATH) && al::isExistFile(DBG_FONT_PATH) && al::isExistFile(DBG_TBL_PATH)) {
@@ -247,7 +351,6 @@ HOOK_DEFINE_TRAMPOLINE(GameSystemInit) {
         sead::TextWriter::setDefaultFont(sead::DebugFontMgrJis1Nvn::instance());
 
         al::GameDrawInfo *drawInfo = Application::instance()->mDrawInfo;
-
         agl::DrawContext *context = drawInfo->mDrawContext;
         agl::RenderBuffer *renderBuffer = drawInfo->mFirstRenderBuffer;
 
@@ -258,6 +361,8 @@ HOOK_DEFINE_TRAMPOLINE(GameSystemInit) {
         gTextWriter->setupGraphics(context);
 
         gTextWriter->mColor = sead::Color4f(1.f, 1.f, 1.f, 0.8f);
+
+        PluginLoader::createHeap();
 
         Orig(thisPtr);
 
@@ -279,16 +384,33 @@ HOOK_DEFINE_TRAMPOLINE(DrawDebugMenu) {
     }
 };
 
+HOOK_DEFINE_REPLACE(AbortObserverHook) {
+    static void Callback(const nn::diag::AbortInfo &abortCtx) {
+        static bool isCalled = false;
+
+        if(!isCalled) {
+            isCalled = true;
+            Logger::log("SDK has been Aborted!\n");
+            exceptionHandlerNoInfo();
+        }
+    }
+};
+
 extern "C" void exl_main(void *x0, void *x1) {
     /* Setup hooking enviroment. */
     exl::hook::Initialize();
 
     nn::os::SetUserExceptionHandler(exception_handler, nullptr, 0, nullptr);
     installExceptionStub();
+    AbortObserverHook::InstallAtOffset(0xB5AA84);
+
+    runCodePatches();
 
     Logger::instance().init(LOGGER_IP, 3080);
 
-    runCodePatches();
+    if(nn::fs::MountSdCardForDebug("sd").isSuccess()) {
+        Logger::log("Mounted SD.\n");
+    }
 
     GameSystemInit::InstallAtOffset(0x535850);
 
@@ -319,8 +441,12 @@ extern "C" void exl_main(void *x0, void *x1) {
     nvnImGui::InstallHooks();
 
     nvnImGui::addDrawFunc(drawDebugWindow);
+
+    nvnImGui::addDrawFunc(drawPluginDebugWindow);
 #endif
 
+    Logger::log("Loading Game Plugins.\n");
+    PluginLoader::loadPlugins("sd:/smo/PluginData");
 }
 
 extern "C" NORETURN void exl_exception_entry() {
