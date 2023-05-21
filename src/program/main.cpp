@@ -44,8 +44,6 @@ static const char *DBG_TBL_PATH = "DebugData/Font/nvn_font_jis1_tbl.bin";
 
 #define IMGUI_ENABLED true
 
-sead::TextWriter *gTextWriter;
-
 void drawSizeInfo(float curSize, float maxSize, const char* name) {
 
     // convert size to megabytes for readability
@@ -340,47 +338,8 @@ HOOK_DEFINE_TRAMPOLINE(FileLoaderIsExistArchive) {
 
 HOOK_DEFINE_TRAMPOLINE(GameSystemInit) {
     static void Callback(GameSystem *thisPtr) {
-        sead::Heap *curHeap = sead::HeapMgr::instance()->getCurrentHeap();
-        sead::DebugFontMgrJis1Nvn::createInstance(curHeap);
-
-        if (al::isExistFile(DBG_SHADER_PATH) && al::isExistFile(DBG_FONT_PATH) && al::isExistFile(DBG_TBL_PATH)) {
-            sead::DebugFontMgrJis1Nvn::instance()->initialize(curHeap, DBG_SHADER_PATH, DBG_FONT_PATH, DBG_TBL_PATH,
-                                                              0x100000);
-        }
-
-        sead::TextWriter::setDefaultFont(sead::DebugFontMgrJis1Nvn::instance());
-
-        al::GameDrawInfo *drawInfo = Application::instance()->mDrawInfo;
-        agl::DrawContext *context = drawInfo->mDrawContext;
-        agl::RenderBuffer *renderBuffer = drawInfo->mFirstRenderBuffer;
-
-        sead::Viewport *viewport = new sead::Viewport(*renderBuffer);
-
-        gTextWriter = new sead::TextWriter(context, viewport);
-
-        gTextWriter->setupGraphics(context);
-
-        gTextWriter->mColor = sead::Color4f(1.f, 1.f, 1.f, 0.8f);
-
         PluginLoader::createHeap();
-
         Orig(thisPtr);
-
-    }
-};
-
-HOOK_DEFINE_TRAMPOLINE(DrawDebugMenu) {
-    static void Callback(HakoniwaSequence *thisPtr) {
-
-        Orig(thisPtr);
-
-        gTextWriter->beginDraw();
-
-        gTextWriter->setCursorFromTopLeft(sead::Vector2f(10.f, 10.f));
-        gTextWriter->printf("FPS: %d\n", static_cast<int>(round(Application::instance()->mFramework->calcFps())));
-
-        gTextWriter->endDraw();
-
     }
 };
 
@@ -427,10 +386,6 @@ extern "C" void exl_main(void *x0, void *x1) {
     // Sead Debugging Overriding
 
     ReplaceSeadPrint::InstallAtOffset(0xB59E28);
-
-    // Debug Text Writer Drawing
-
-    DrawDebugMenu::InstallAtOffset(0x50F1D8);
 
     // General Hooks
 

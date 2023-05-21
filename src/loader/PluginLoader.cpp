@@ -149,6 +149,8 @@ bool PluginLoader::loadPlugins(const char* rootDir) {
     // init ro
     nn::ro::Initialize();
 
+    Logger::log("Loading nro files within %s.\n", rootDir);
+
     // get root dir info
     s64 nroCount = 0;
     FsHelper::DirFileEntry *fileData = FsHelper::loadFilesFromDirectory(rootDir, &nroCount, ".nro");
@@ -169,7 +171,6 @@ bool PluginLoader::loadPlugins(const char* rootDir) {
     inst.mIsPluginsLoaded = true;
 
     return true;
-
 }
 
 void PluginLoader::unloadPlugins() {
