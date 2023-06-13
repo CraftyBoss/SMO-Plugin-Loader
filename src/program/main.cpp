@@ -6,6 +6,7 @@
 #include "nn/fs.h"
 #include "nn/diag.h"
 
+#include <al/async/FunctorV0M.hpp>
 #include <basis/seadRawPrint.h>
 #include <devenv/seadDebugFontMgrNvn.h>
 #include <filedevice/nin/seadNinSDFileDeviceNin.h>
@@ -15,6 +16,7 @@
 #include <gfx/seadViewport.h>
 #include <heap/seadHeapMgr.h>
 #include <helpers/fsHelper.h>
+#include <plugin/events/Events.h>
 #include <prim/seadSafeString.h>
 #include <resource/seadArchiveRes.h>
 #include <resource/seadResourceMgr.h>
@@ -35,12 +37,8 @@
 #include "helpers/PlayerHelper.h"
 #include "game/GameData/GameDataFunction.h"
 
-#include "ExceptionHandler.h"
-#include "loader/PluginLoader.h"
-
-static const char *DBG_FONT_PATH = "DebugData/Font/nvn_font_jis1.ntx";
-static const char *DBG_SHADER_PATH = "DebugData/Font/nvn_font_shader_jis1.bin";
-static const char *DBG_TBL_PATH = "DebugData/Font/nvn_font_jis1_tbl.bin";
+#include "exception/ExceptionHandler.h"
+#include "plugin/PluginLoader.h"
 
 #define IMGUI_ENABLED true
 
@@ -137,7 +135,22 @@ void drawPluginDebugWindow() {
 
     if(ImGui::TreeNode("Plugin Info")) {
         for (int i = 0; i < pluginCount; ++i) {
-            ImGui::BulletText("Plugin: %s", pluginNames[i]);
+            char idBuf[0x40] = {};
+            sprintf(idBuf, "Plugin: %s", pluginNames[i]);
+            if(ImGui::TreeNode(idBuf)) {
+                PluginData* plugin = PluginLoader::getPluginData(i);
+                ImGui::Text("Is Plugin Loaded?: %s", BTOC(plugin->mModuleLoaded));
+                if(!plugin->mModuleLoaded) {
+                    continue;
+                }
+                char hashStr[65] = {};
+                plugin->mPluginHash.sprint(hashStr);
+                ImGui::Text("Plugin Hash: %s", hashStr);
+
+                drawHeapInfo(plugin->mHeap);
+
+                ImGui::TreePop();
+            }
         }
         ImGui::TreePop();
     }
@@ -336,42 +349,45 @@ HOOK_DEFINE_TRAMPOLINE(FileLoaderIsExistArchive) {
     }
 };
 
-HOOK_DEFINE_TRAMPOLINE(GameSystemInit) {
-    static void Callback(GameSystem *thisPtr) {
-        PluginLoader::createHeap();
-        Orig(thisPtr);
-    }
-};
+bool gameSystemInitPrefix(GameSystem*){
+    PluginLoader::createHeap();
 
-HOOK_DEFINE_REPLACE(AbortObserverHook) {
-    static void Callback(const nn::diag::AbortInfo &abortCtx) {
-        static bool isCalled = false;
+    Logger::log("Loading Game Plugins.\n");
 
-        if(!isCalled) {
-            isCalled = true;
-            Logger::log("SDK has been Aborted!\n");
-            exceptionHandlerNoInfo();
-        }
-    }
-};
+    handler::tryCatch([]() {
+        PluginLoader::loadPlugins("sd:/smo/PluginData");
+    }, [](handler::ExceptionInfo& info) {
+        Logger::log("Exception caught while loading plugins. Unable to continue loading.\n");
+        handler::printStackTrace(info, 1, true);
+        return true;
+    });
+
+    return true;
+}
 
 extern "C" void exl_main(void *x0, void *x1) {
     /* Setup hooking enviroment. */
     exl::hook::Initialize();
 
-    nn::os::SetUserExceptionHandler(exception_handler, nullptr, 0, nullptr);
-    installExceptionStub();
-    AbortObserverHook::InstallAtOffset(0xB5AA84);
+    handler::installExceptionHandler([](handler::ExceptionInfo& info) {
+        handler::printCrashReport(info);
+        return false;
+    });
 
     runCodePatches();
-
     Logger::instance().init(LOGGER_IP, 3080);
+
+    // event system
+
+    EventSystem::installAllEvents();
+
+    GameSystemEvent::Init::addEvent(&gameSystemInitPrefix, nullptr);
+
+    // sd mounting
 
     if(nn::fs::MountSdCardForDebug("sd").isSuccess()) {
         Logger::log("Mounted SD.\n");
     }
-
-    GameSystemInit::InstallAtOffset(0x535850);
 
     // SD File Redirection
 
@@ -395,13 +411,12 @@ extern "C" void exl_main(void *x0, void *x1) {
 #if IMGUI_ENABLED
     nvnImGui::InstallHooks();
 
-    nvnImGui::addDrawFunc(drawDebugWindow);
-
     nvnImGui::addDrawFunc(drawPluginDebugWindow);
-#endif
 
-    Logger::log("Loading Game Plugins.\n");
-    PluginLoader::loadPlugins("sd:/smo/PluginData");
+    nvnImGui::addDrawFunc([]() {
+        ModEvent::ImguiDraw::RunEvents();
+    });
+#endif
 }
 
 extern "C" NORETURN void exl_exception_entry() {

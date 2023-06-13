@@ -11,10 +11,11 @@ class ChangeStageInfo {
     public:
         enum SubScenarioType : unsigned int {
             UNK,
-            UNK1,
-            UNK2,
-            UNK3,
-            UNK4
+            UNK1, // Might recover health?
+            UNK2, // ResetMiniGame (StartTimeBalloon)
+            UNK3, // SnowManRaceStart
+            UNK4 // ResetMiniGame (RaceMan)
+            // 5 and below recover health
         };
 
         ChangeStageInfo(const GameDataHolder *mHolder, const al::PlacementInfo &placementInfo);

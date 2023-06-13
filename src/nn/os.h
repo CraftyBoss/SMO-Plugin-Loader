@@ -10,6 +10,8 @@
 // #include <nn/time.h>
 #include <types.h>
 
+#include <os/os_thread_api.hpp>
+
 namespace nn {
     namespace os {
         namespace detail {
@@ -178,42 +180,42 @@ namespace nn {
 //u8 TimedWaitConditionVariable(ConditionVariableType*, MutexType*, nn::TimeSpan);
 
 // THREAD
-        Result CreateThread(nn::os::ThreadType *, void (*)(void *), void *arg, void *srcStack, u64 stackSize,
-                            s32 priority, s32 coreNum);
+//        Result CreateThread(nn::os::ThreadType *, void (*)(void *), void *arg, void *srcStack, u64 stackSize,
+//                            s32 priority, s32 coreNum);
 
-        Result CreateThread(nn::os::ThreadType *, void (*)(void *), void *arg, void *srcStack, u64 stackSize,
-                            s32 priority);
+//        Result CreateThread(nn::os::ThreadType *, void (*)(void *), void *arg, void *srcStack, u64 stackSize,
+//                            s32 priority);
 
-        void DestroyThread(nn::os::ThreadType *);
+//        void DestroyThread(nn::os::ThreadType *);
 
-        void StartThread(nn::os::ThreadType *);
+//        void StartThread(nn::os::ThreadType *);
 
-        void SetThreadName(nn::os::ThreadType *, char const *threadName);
+//        void SetThreadName(nn::os::ThreadType *, char const *threadName);
 
-        void SetThreadNamePointer(nn::os::ThreadType *, char const *);
+//        void SetThreadNamePointer(nn::os::ThreadType *, char const *);
 
-        char *GetThreadNamePointer(nn::os::ThreadType const *);
+//        char *GetThreadNamePointer(nn::os::ThreadType const *);
 
-        nn::os::ThreadType *GetCurrentThread();
+//        nn::os::ThreadType *GetCurrentThread();
 
-        void GetCurrentStackInfo(uintptr_t *stack_addr, size_t *stack_size);
+//        void GetCurrentStackInfo(uintptr_t *stack_addr, size_t *stack_size);
 
-        s32 ChangeThreadPriority(nn::os::ThreadType *thread, s32 priority);
+//        s32 ChangeThreadPriority(nn::os::ThreadType *thread, s32 priority);
 
-        s32 GetThreadPriority(nn::os::ThreadType const *thread);
+//        s32 GetThreadPriority(nn::os::ThreadType const *thread);
 
-        u64 GetThreadId(const nn::os::ThreadType *thread);
+//        u64 GetThreadId(const nn::os::ThreadType *thread);
 
-        void YieldThread();
+//        void YieldThread();
 
-        void SuspendThread(nn::os::ThreadType *);
+//        void SuspendThread(nn::os::ThreadType *);
 
-        void ResumeThread(nn::os::ThreadType *);
+//        void ResumeThread(nn::os::ThreadType *);
 
 //void SleepThread(nn::TimeSpan);
-        void WaitThread(nn::os::ThreadType *);
+//        void WaitThread(nn::os::ThreadType *);
 
-        void SetThreadCoreMask(nn::os::ThreadType *, int, u64 mask);
+//        void SetThreadCoreMask(nn::os::ThreadType *, int, u64 mask);
 
 // EVENTS
         void InitializeEvent(EventType *, bool initiallySignaled, bool autoclear);
@@ -312,7 +314,7 @@ namespace nn {
 
         void SetTlsValue(TlsSlot slot, u64 value);
 
-        u32 GetCurrentCoreNumber();
+//        u32 GetCurrentCoreNumber();
 
         namespace detail {
             extern s32 g_CommandLineParameter;

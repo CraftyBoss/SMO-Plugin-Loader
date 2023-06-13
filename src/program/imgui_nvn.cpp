@@ -5,7 +5,6 @@
 #include "lib.hpp"
 #include "logger/Logger.hpp"
 #include "nvn_CppFuncPtrImpl.h"
-#include <loader/PluginLoader.h>
 
 nvn::Device *nvnDevice;
 nvn::Queue *nvnQueue;

@@ -1,6 +1,7 @@
 #include "lib.hpp"
 #include <heap/seadHeapMgr.h>
-#include <loader/PluginLoader.h>
+#include <plugin/PluginLoader.h>
+#include <plugin/events/Events.h>
 
 #include "nn/init.h"
 
@@ -10,55 +11,56 @@ PluginLoader& PluginLoader::instance() {
 }
 
 EXPORT_SYM void* pluginAlloc(size_t size, s32 alignment = 8) {
-    return nn::init::GetAllocator()->Allocate(ALIGN_UP(size, alignment));
-//    return PluginLoader::getHeap()->alloc(size, alignment);
+//    return nn::init::GetAllocator()->Allocate(ALIGN_UP(size, alignment));
+    return PluginLoader::getHeap()->alloc(size, alignment);
 }
 
 EXPORT_SYM void pluginFree(void* ptr) {
-    nn::init::GetAllocator()->Free(ptr);
-//    PluginLoader::getHeap()->free(ptr);
+//    nn::init::GetAllocator()->Free(ptr);
+    PluginLoader::getHeap()->free(ptr);
 }
 
 EXPORT_SYM void* pluginRealloc(void* ptr, size_t size) {
-    return nn::init::GetAllocator()->Reallocate(ptr, size);
-//    return PluginLoader::getHeap()->tryRealloc(ptr, size, 8);
+//    return nn::init::GetAllocator()->Reallocate(ptr, size);
+    return PluginLoader::getHeap()->tryRealloc(ptr, size, 8);
 }
 
 bool PluginLoader::createPluginData(PluginData& data, const FsHelper::DirFileEntry& entry) {
 
     Logger::log("Size: %u\n", entry.bufSize);
 
-    data.fileSize = entry.bufSize;
-    data.fileData = (u8*)pluginAlloc(data.fileSize, 0x1000); // must be aligned
-    memcpy(data.fileData, entry.fileBuffer, data.fileSize);
-    memcpy(data.path, entry.fullPath, sizeof(data.path));
+    data.mFileSize = entry.bufSize;
+    data.mFileData = (u8*)pluginAlloc(data.mFileSize, 0x1000); // must be aligned
+    memcpy(data.mFileData, entry.fileBuffer, data.mFileSize);
+    memcpy(data.mName, entry.fullPath, sizeof(data.mName));
+//    FsHelper::getFileName(data.mName);
 
-    if(nn::ro::GetBufferSize(&data.bssSize, data.fileData).isFailure()) {
+    if(nn::ro::GetBufferSize(&data.mBssSize, data.mFileData).isFailure()) {
         Logger::log("Failed to get NRO Buffer Size! NRO may not be valid!\n");
-        pluginFree(data.fileData);
+        pluginFree(data.mFileData);
         return false;
     }
 
-    Logger::log("NRO Buffer size: %d\n", data.bssSize);
+    Logger::log("NRO Buffer size: %d\n", data.mBssSize);
 
-    data.bssData = (u8*)pluginAlloc(data.bssSize, 0x1000);
+    data.mBssData = (u8*)pluginAlloc(data.mBssSize, 0x1000);
 
     // hash header for NRR registration later
-    auto* nroHeader = (nn::ro::NroHeader*)data.fileData;
-    nn::crypto::GenerateSha256Hash(&data.hash, sizeof(data.hash), nroHeader, nroHeader->size);
+    auto* nroHeader = (nn::ro::NroHeader*)data.mFileData;
+    nn::crypto::GenerateSha256Hash(&data.mPluginHash, sizeof(data.mPluginHash), nroHeader, nroHeader->size);
     
     Logger::log("NRO Hash: ");
-    data.hash.print();
+    data.mPluginHash.print();
 
     // register hash to set
 
-    if(mSortedHashes.find(data.hash) != nullptr) {
+    if(mSortedHashes.find(data.mPluginHash) != nullptr) {
         Logger::log("Plugin has already been registered! Skipping.\n");
-        pluginFree(data.fileData);
+        pluginFree(data.mFileData);
         return false;
     }
 
-    mSortedHashes.insert(data.hash);
+    mSortedHashes.insert(data.mPluginHash);
 
     return true;
 }
@@ -109,8 +111,8 @@ void PluginLoader::generatePluginNrr() {
     auto* hashes = reinterpret_cast<Sha256Hash*>(mNrrBuffer + sizeof(nn::ro::NrrHeader));
 
     size_t hashIndex = 0;
-    mSortedHashes.forEach([hashes, hashIndex](const Sha256Hash &hash) {
-        hashes[hashIndex] = hash;
+    mSortedHashes.forEach([hashes, &hashIndex](const Sha256Hash &hash) {
+        hashes[hashIndex++] = hash;
     });
 
     // we won't need the sorted hash buffer after this point, so it can be freed
@@ -131,10 +133,12 @@ bool PluginLoader::registerAndLoadModules() {
     for (int i = 0; i < mPluginCount; ++i) {
         auto& plugin = mPlugins[i];
 
-        if(nn::ro::LoadModule(&plugin.module, plugin.fileData, plugin.bssData, plugin.bssSize, nn::ro::BindFlag_Now).isFailure()) {
-            Logger::log("Failed to Load Module for plugin at: %s\n", plugin.path);
+        if(nn::ro::LoadModule(&plugin.mModule, plugin.mFileData, plugin.mBssData, plugin.mBssSize, nn::ro::BindFlag_Now).isFailure()) {
+            Logger::log("Failed to Load Module for plugin at: %s\n", plugin.mName);
         }else {
-            Logger::log("Loaded Module: %s\n", FsHelper::getFileName(plugin.path));
+            Logger::log("Loaded Module: %s\n", plugin.mModule.Name);
+            Logger::log("File Name: %s\n", FsHelper::getFileName(plugin.mName));
+            plugin.mModuleLoaded = true;
         }
     }
 
@@ -170,6 +174,20 @@ bool PluginLoader::loadPlugins(const char* rootDir) {
 
     inst.mIsPluginsLoaded = true;
 
+    for (int i = 0; i < inst.mPluginCount; ++i) {
+        auto& plugin = inst.mPlugins[i];
+        if(!plugin.mModuleLoaded)
+            continue;
+
+        Logger::log("Running plugin_main for %s.\n", FsHelper::getFileName(plugin.mName));
+
+        LoaderCtx ctx = {inst.mHeap};
+
+        plugin.runPluginMain(ctx);
+
+        plugin.mHeap = ctx.mChildHeap;
+    }
+
     return true;
 }
 
@@ -178,37 +196,68 @@ void PluginLoader::unloadPlugins() {
 
     for (int i = 0; i < inst.mPluginCount; ++i) {
         auto& plugin = inst.mPlugins[i];
-
-        nn::ro::UnloadModule(&plugin.module);
-
-        pluginFree(plugin.fileData);
-        pluginFree(plugin.bssData);
-
+        nn::ro::UnloadModule(&plugin.mModule);
     }
 
-    // free buffers
-
-    pluginFree(inst.mPlugins);
-    pluginFree(inst.mNrrBuffer);
+    // reset plugin heap
+    inst.mHeap->freeAll();
 
     inst.mPluginCount = 0;
     inst.mIsPluginsLoaded = false;
+
+    // remove all plugin events (the only one the loader uses doesn't ever run again after game init)
+    EventSystem::clearAllEvents();
 
     // finalize ro
 
     nn::ro::Finalize();
 }
 
+void PluginLoader::unloadPluginByName(const char* name) {
+    Logger::log("Unloading Plugin: %s\n", name);
+
+    EventSystem::removeFromEvents(name); // removes all events registered to the plugins name (without .nro)
+
+
+
+    // TODO: actually unload
+}
+
+void PluginLoader::unloadPluginByIdx(int index) {
+    PluginData* data = getPluginData(index);
+}
+
 void PluginLoader::getPluginNames(const char** outBuffer) {
     auto& inst = instance();
 
     for (int i = 0; i < inst.mPluginCount; ++i) {
-        outBuffer[i] = FsHelper::getFileName(inst.mPlugins[i].path);
+        outBuffer[i] = FsHelper::getFileName(inst.mPlugins[i].mName);
     }
 }
-
 sead::Heap* PluginLoader::createHeap() {
-    return instance().mHeap = sead::ExpHeap::create(MBTOBYTES(5), "PluginHeap", sead::HeapMgr::instance()->findHeapByName("SequenceHeap", 0), 8, sead::Heap::cHeapDirection_Forward, false);
+    sead::ExpHeap* pluginHeap = instance().mHeap = sead::ExpHeap::create(MBTOBYTES(5), "PluginHeap",
+                                                                         sead::HeapMgr::instance()->findHeapByName("SequenceHeap", 0),
+                                                                         8, sead::Heap::cHeapDirection_Forward, false);
+    pluginHeap->enableLock(true); // allows for plugin heap to be used across threads
+    return pluginHeap;
+}
+sead::Heap* PluginLoader::getHeap() { return instance().mHeap; }
+
+PluginData* PluginLoader::getPluginData(int idx) {
+    auto& inst = instance();
+    if(inst.mPluginCount > idx) {
+        return &inst.mPlugins[idx];
+    }
+    return nullptr;
 }
 
-sead::Heap* PluginLoader::getHeap() { return instance().mHeap; }
+int PluginLoader::getPluginIdxByName(const char* name) {
+    auto& inst = instance();
+
+    for (int i = 0; i < inst.mPluginCount; ++i) {
+        auto& pluginData = inst.mPlugins[i];
+        if(strstr(pluginData.mName,name) != nullptr) return i;
+    }
+
+    return -1;
+}

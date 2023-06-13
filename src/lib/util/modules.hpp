@@ -16,5 +16,4 @@ namespace exl::util::modules {
     inline uintptr_t GetTargetStart() {
         return GetTargetOffset(0);
     }
-
 }
