@@ -2,20 +2,19 @@
 #include "imgui_backend/imgui_impl_nvn.hpp"
 #include "patches.hpp"
 #include "logger/Logger.hpp"
+#include "imgui_nvn.h"
+#include "helpers/PlayerHelper.h"
+
+#include "exception/ExceptionHandler.h"
+#include "plugin/PluginLoader.h"
 
 #include "nn/fs.h"
-#include "nn/diag.h"
 
-#include <al/async/FunctorV0M.hpp>
 #include <basis/seadRawPrint.h>
-#include <devenv/seadDebugFontMgrNvn.h>
 #include <filedevice/nin/seadNinSDFileDeviceNin.h>
 #include <filedevice/seadFileDeviceMgr.h>
 #include <filedevice/seadPath.h>
-#include <gfx/seadTextWriter.h>
 #include <gfx/seadViewport.h>
-#include <heap/seadHeapMgr.h>
-#include <helpers/fsHelper.h>
 #include <plugin/events/Events.h>
 #include <prim/seadSafeString.h>
 #include <resource/seadArchiveRes.h>
@@ -25,20 +24,10 @@
 
 #include "game/StageScene/StageScene.h"
 #include "game/System/GameSystem.h"
-#include "game/System/Application.h"
 #include "game/HakoniwaSequence/HakoniwaSequence.h"
-
-#include "al/util.hpp"
-#include "al/fs/FileLoader.h"
-
-#include "agl/utl.h"
-#include "imgui_nvn.h"
-#include "helpers/InputHelper.h"
-#include "helpers/PlayerHelper.h"
 #include "game/GameData/GameDataFunction.h"
 
-#include "exception/ExceptionHandler.h"
-#include "plugin/PluginLoader.h"
+#include <al/Library/File/FileLoader.h>
 
 #define IMGUI_ENABLED true
 
@@ -160,12 +149,12 @@ void drawPluginDebugWindow() {
 }
 
 void drawDebugWindow() {
-    al::Sequence *curSequence = GameSystemFunction::getGameSystem()->mCurSequence;
+    HakoniwaSequence *gameSeq = (HakoniwaSequence *) GameSystemFunction::getGameSystem()->mCurSequence;
 
     ImGui::Begin("Game Debug Window");
     ImGui::SetWindowSize(ImVec2(500, 400), ImGuiCond_FirstUseEver);
 
-    ImGui::Text("Current Sequence Name: %s", curSequence->getName().cstr());
+    ImGui::Text("Current Sequence Name: %s", gameSeq->getName().cstr());
 
     static bool showWindow = false;
 
@@ -177,76 +166,67 @@ void drawDebugWindow() {
         ImGui::ShowDemoWindow();
     }
 
-    if (curSequence && al::isEqualString(curSequence->getName().cstr(), "HakoniwaSequence")) {
-        auto gameSeq = (HakoniwaSequence *) curSequence;
-        auto curScene = gameSeq->curScene;
+    auto curScene = gameSeq->mStageScene;
 
-        bool isInGame =
-                curScene && curScene->mIsAlive && al::isEqualString(curScene->mName.cstr(), "StageScene");
+    bool isInGame =
+        curScene && curScene->mIsAlive;
 
-        if (ImGui::CollapsingHeader("World List")) {
-            for (auto &entry: gameSeq->mGameDataHolder.mData->mWorldList->mWorldList) {
-                if (ImGui::TreeNode(entry.mMainStageName)) {
+    if (ImGui::CollapsingHeader("World List")) {
+        for (auto &entry: gameSeq->mGameDataHolder.mData->mWorldList->mWorldList) {
+            if (ImGui::TreeNode(entry.mMainStageName)) {
 
-                    if (isInGame) {
-                        if (ImGui::Button("Warp to World")) {
-                            PlayerHelper::warpPlayer(entry.mMainStageName, gameSeq->mGameDataHolder);
-                        }
+                if (isInGame) {
+                    if (ImGui::Button("Warp to World")) {
+                        PlayerHelper::warpPlayer(entry.mMainStageName, gameSeq->mGameDataHolder);
                     }
+                }
 
-                    ImGui::BulletText("Clear Main Scenario: %d", entry.mClearMainScenario);
-                    ImGui::BulletText("Ending Scenario: %d", entry.mEndingScenario);
-                    ImGui::BulletText("Moon Rock Scenario: %d", entry.mMoonRockScenario);
+                ImGui::BulletText("Clear Main Scenario: %d", entry.mClearMainScenario);
+                ImGui::BulletText("Ending Scenario: %d", entry.mEndingScenario);
+                ImGui::BulletText("Moon Rock Scenario: %d", entry.mMoonRockScenario);
 
-                    if (ImGui::TreeNode("Main Quest Infos")) {
-                        for (int i = 0; i < entry.mQuestInfoCount; ++i) {
-                            ImGui::BulletText("Quest %d Scenario: %d", i, entry.mMainQuestIndexes[i]);
-                        }
-                        ImGui::TreePop();
+                if (ImGui::TreeNode("Main Quest Infos")) {
+                    for (int i = 0; i < entry.mQuestInfoCount; ++i) {
+                        ImGui::BulletText("Quest %d Scenario: %d", i, entry.mMainQuestIndexes[i]);
                     }
-
-                    if (ImGui::CollapsingHeader("Database Entries")) {
-                        for (auto &dbEntry: entry.mStageNames) {
-                            if (ImGui::TreeNode(dbEntry.mStageName.cstr())) {
-                                ImGui::BulletText("Stage Category: %s", dbEntry.mStageCategory.cstr());
-                                ImGui::BulletText("Stage Use Scenario: %d", dbEntry.mUseScenario);
-
-                                if (isInGame) {
-                                    ImGui::Bullet();
-                                    if (ImGui::SmallButton("Warp to Stage")) {
-                                        PlayerHelper::warpPlayer(dbEntry.mStageName.cstr(),
-                                                                 gameSeq->mGameDataHolder);
-                                    }
-                                }
-
-                                ImGui::TreePop();
-                            }
-                        }
-                    }
-
                     ImGui::TreePop();
                 }
+
+                if (ImGui::CollapsingHeader("Database Entries")) {
+                    for (auto &dbEntry: entry.mStageNames) {
+                        if (ImGui::TreeNode(dbEntry.mStageName.cstr())) {
+                            ImGui::BulletText("Stage Category: %s", dbEntry.mStageCategory.cstr());
+                            ImGui::BulletText("Stage Use Scenario: %d", dbEntry.mUseScenario);
+
+                            if (isInGame) {
+                                ImGui::Bullet();
+                                if (ImGui::SmallButton("Warp to Stage")) {
+                                    PlayerHelper::warpPlayer(dbEntry.mStageName.cstr(),
+                                                             gameSeq->mGameDataHolder);
+                                }
+                            }
+
+                            ImGui::TreePop();
+                        }
+                    }
+                }
+
+                ImGui::TreePop();
             }
         }
+    }
 
-        if (isInGame) {
-            StageScene *stageScene = (StageScene *) gameSeq->curScene;
-            PlayerActorBase *playerBase = rs::getPlayerActor(stageScene);
+    if (isInGame) {
+        StageScene *stageScene = gameSeq->mStageScene;
+        PlayerActorBase *playerBase = rs::getPlayerActor(stageScene);
 
-            if (ImGui::Button("Kill Mario")) {
-                PlayerHelper::killPlayer(playerBase);
-            }
+        if (ImGui::Button("Kill Mario")) {
+            PlayerHelper::killPlayer(playerBase);
         }
     }
 
     ImGui::End();
 }
-
-HOOK_DEFINE_TRAMPOLINE(ControlHook) {
-    static void Callback(StageScene *scene) {
-        Orig(scene);
-    }
-};
 
 HOOK_DEFINE_REPLACE(ReplaceSeadPrint) {
     static void Callback(const char *format, ...) {
@@ -262,7 +242,7 @@ HOOK_DEFINE_TRAMPOLINE(CreateFileDeviceMgr) {
 
         Orig(thisPtr);
 
-        thisPtr->mMountedSd = true;
+        thisPtr->mMountedSd = true; // we mount sd card during module init
 
         sead::NinSDFileDevice *sdFileDevice = new sead::NinSDFileDevice();
 
@@ -402,10 +382,6 @@ extern "C" void exl_main(void *x0, void *x1) {
     // Sead Debugging Overriding
 
     ReplaceSeadPrint::InstallAtOffset(0xB59E28);
-
-    // General Hooks
-
-    ControlHook::InstallAtSymbol("_ZN10StageScene7controlEv");
 
     // ImGui Hooks
 #if IMGUI_ENABLED

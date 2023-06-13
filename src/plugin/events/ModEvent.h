@@ -5,6 +5,7 @@
 #include "types.h"
 #include <container/seadStrTreeMap.h>
 #include <container/seadTreeMap.h>
+#include <heap/seadHeapMgr.h>
 #include <exception/ExceptionHandler.h>
 #include <map>
 #include <os/os_thread_api.hpp>
