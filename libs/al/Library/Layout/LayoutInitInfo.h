@@ -2,9 +2,9 @@
 
 #include "al/Library/Scene/Scene.h"
 #include "al/Library/System/GameSystemInfo.h"
-#include "al/Library/audio/AudioDirector.h"
-#include "al/Library/execute/ExecuteDirector.h"
-#include "al/Library/layout/LayoutSceneInfo.h"
+#include "al/Library/Audio/AudioDirector.h"
+#include "al/Library/Execute/ExecuteDirector.h"
+#include "al/Library/Layout/LayoutSceneInfo.h"
 
 namespace al {
 
