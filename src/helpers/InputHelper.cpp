@@ -1,21 +1,20 @@
 #include "InputHelper.h"
-#include "diag/assert.hpp"
 
 static const char *styleNames[] = {
-        "Pro Controller",
-        "Joy-Con controller in handheld mode",
-        "Joy-Con controller in dual mode",
-        "Joy-Con left controller in single mode",
-        "Joy-Con right controller in single mode",
-        "GameCube controller",
-        "Poké Ball Plus controller",
-        "NES/Famicom controller",
-        "NES/Famicom controller in handheld mode",
-        "SNES controller",
-        "N64 controller",
-        "Sega Genesis controller",
-        "generic external controller",
-        "generic controller",
+    "Pro Controller",
+    "Joy-Con controller in handheld mode",
+    "Joy-Con controller in dual mode",
+    "Joy-Con left controller in single mode",
+    "Joy-Con right controller in single mode",
+    "GameCube controller",
+    "Poké Ball Plus controller",
+    "NES/Famicom controller",
+    "NES/Famicom controller in handheld mode",
+    "SNES controller",
+    "N64 controller",
+    "Sega Genesis controller",
+    "generic external controller",
+    "generic controller",
 };
 
 nn::hid::NpadBaseState InputHelper::prevControllerState{};
@@ -27,13 +26,16 @@ nn::hid::KeyboardState InputHelper::prevKeyboardState{};
 nn::hid::MouseState InputHelper::curMouseState{};
 nn::hid::MouseState InputHelper::prevMouseState{};
 
+nn::hid::TouchScreenState<1> InputHelper::curTouchState{};
+nn::hid::TouchScreenState<1> InputHelper::prevTouchState{};
+
 ulong InputHelper::selectedPort = -1;
 bool InputHelper::isReadInput = true;
-bool InputHelper::toggleInput = true;
+bool InputHelper::toggleInput = false;
 
 const char *getStyleName(nn::hid::NpadStyleSet style) {
 
-    u32 index = -1;
+    s32 index = -1;
 
     if (style.isBitSet(nn::hid::NpadStyleTag::NpadStyleFullKey)) { index = 0; }
     if (style.isBitSet(nn::hid::NpadStyleTag::NpadStyleHandheld)) { index = 1; }
@@ -72,7 +74,11 @@ void InputHelper::updatePadState() {
     prevMouseState = curMouseState;
     nn::hid::GetMouseState(&curMouseState);
 
-    if (isHoldZL() && isPressZR()) {
+    prevTouchState = curTouchState;
+    nn::hid::GetTouchScreenState(&curTouchState);
+
+    //    if (isHoldZL() && isPressZR()) {
+        if ((isHoldLeftStick() && isPressRightStick()) || (isHoldRightStick() && isPressLeftStick())) {
         toggleInput = !toggleInput;
     }
 }
@@ -127,6 +133,10 @@ bool InputHelper::isKeyRelease(nn::hid::KeyboardKey key) {
     return !curKeyboardState.keys.isBitSet(key) && prevKeyboardState.keys.isBitSet(key);
 }
 
+bool InputHelper::isModifierActive(nn::hid::KeyboardModifier modifier) {
+    return curKeyboardState.modifiers.isBitSet(modifier);
+}
+
 bool InputHelper::isMouseHold(nn::hid::MouseButton button) {
     return curMouseState.buttons.isBitSet(button);
 }
@@ -139,6 +149,10 @@ bool InputHelper::isMouseRelease(nn::hid::MouseButton button) {
     return !curMouseState.buttons.isBitSet(button) && prevMouseState.buttons.isBitSet(button);
 }
 
+bool InputHelper::isMouseConnected() {
+    return curMouseState.attributes.isBitSet(nn::hid::MouseAttribute::IsConnected);
+}
+
 void InputHelper::getMouseCoords(float *x, float *y) {
     *x = curMouseState.x;
     *y = curMouseState.y;
@@ -148,3 +162,25 @@ void InputHelper::getScrollDelta(float *x, float *y) {
     *x = curMouseState.wheelDeltaX;
     *y = curMouseState.wheelDeltaY;
 }
+
+bool InputHelper::getTouchCoords(s32* x, s32* y) {
+    if(curTouchState.count > 0) {
+        *x = curTouchState.touches[0].X;
+        *y = curTouchState.touches[0].Y;
+        return true;
+    }
+    return false;
+}
+
+bool InputHelper::isHoldTouch() {
+    return curTouchState.count > 0;
+}
+
+bool InputHelper::isPressTouch() {
+    return curTouchState.count > 0 && prevTouchState.count == 0;
+}
+
+bool InputHelper::isReleaseTouch() {
+    return curTouchState.count == 0 && prevTouchState.count > 0;
+}
+

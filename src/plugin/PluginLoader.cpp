@@ -32,8 +32,21 @@ bool PluginLoader::createPluginData(PluginData& data, const FsHelper::DirFileEnt
     data.mFileSize = entry.bufSize;
     data.mFileData = (u8*)pluginAlloc(data.mFileSize, 0x1000); // must be aligned
     memcpy(data.mFileData, entry.fileBuffer, data.mFileSize);
-    memcpy(data.mName, entry.fullPath, sizeof(data.mName));
-//    FsHelper::getFileName(data.mName);
+
+    const char* fileName = FsHelper::getFileName(entry.fullPath);
+    if(strlen(fileName) < sizeof(data.mFileName)) {
+        strcpy(data.mFileName, fileName);
+    }else {
+        Logger::log("File name too long for buffer! Cannot copy.\n");
+    }
+
+    size_t filePathLen = strlen(entry.fullPath) - (strlen(data.mFileName) + 1);
+    if(filePathLen < sizeof(data.mFilePath)) {
+        strncpy(data.mFilePath, entry.fullPath, filePathLen);
+        data.mFilePath[filePathLen] = '\0'; // strncpy doesn't null terminate if max length is less than full path length
+    }else {
+        Logger::log("File path too long for buffer! Cannot copy.\n");
+    }
 
     if(nn::ro::GetBufferSize(&data.mBssSize, data.mFileData).isFailure()) {
         Logger::log("Failed to get NRO Buffer Size! NRO may not be valid!\n");
@@ -134,10 +147,9 @@ bool PluginLoader::registerAndLoadModules() {
         auto& plugin = mPlugins[i];
 
         if(nn::ro::LoadModule(&plugin.mModule, plugin.mFileData, plugin.mBssData, plugin.mBssSize, nn::ro::BindFlag_Now).isFailure()) {
-            Logger::log("Failed to Load Module for plugin at: %s\n", plugin.mName);
+            Logger::log("Failed to Load Module for plugin at: %s/%s\n", plugin.mFilePath, plugin.mFileName);
         }else {
-            Logger::log("Loaded Module: %s\n", plugin.mModule.Name);
-            Logger::log("File Name: %s\n", FsHelper::getFileName(plugin.mName));
+            Logger::log("Loaded Module: %s\n", plugin.mFileName);
             plugin.mModuleLoaded = true;
         }
     }
@@ -147,7 +159,7 @@ bool PluginLoader::registerAndLoadModules() {
     return true;
 }
 
-bool PluginLoader::loadPlugins(const char* rootDir) {
+bool PluginLoader::loadPlugins(const char* rootDir, bool isReload) {
     auto& inst = instance();
 
     // init ro
@@ -179,11 +191,19 @@ bool PluginLoader::loadPlugins(const char* rootDir) {
         if(!plugin.mModuleLoaded)
             continue;
 
-        Logger::log("Running plugin_main for %s.\n", FsHelper::getFileName(plugin.mName));
+        Logger::log("Running plugin_main for %s.\n", plugin.mFileName);
 
-        LoaderCtx ctx = {inst.mHeap};
+        LoaderCtx ctx = {
+            .mRootPluginHeap = inst.mHeap,
+            .mIsReload = isReload
+        };
+        strcpy(ctx.mLoadDir, plugin.mFilePath + 8); // strlen("sd:/smo/") required for using sead's file device system
 
-        plugin.runPluginMain(ctx);
+        if(!plugin.runPluginMain(ctx)) {
+            Logger::log("Plugin was not able to successfully start.\n");
+            // TODO: unload individual plugin
+            continue;
+        }
 
         plugin.mHeap = ctx.mChildHeap;
     }
@@ -231,7 +251,7 @@ void PluginLoader::getPluginNames(const char** outBuffer) {
     auto& inst = instance();
 
     for (int i = 0; i < inst.mPluginCount; ++i) {
-        outBuffer[i] = FsHelper::getFileName(inst.mPlugins[i].mName);
+        outBuffer[i] = inst.mPlugins[i].mFileName;
     }
 }
 sead::Heap* PluginLoader::createHeap() {
@@ -256,7 +276,7 @@ int PluginLoader::getPluginIdxByName(const char* name) {
 
     for (int i = 0; i < inst.mPluginCount; ++i) {
         auto& pluginData = inst.mPlugins[i];
-        if(strstr(pluginData.mName,name) != nullptr) return i;
+        if(strstr(pluginData.mFileName,name) != nullptr) return i;
     }
 
     return -1;

@@ -44,7 +44,7 @@ public:
 
     static PluginLoader& instance();
 
-    static bool loadPlugins(const char* rootDir);
+    static bool loadPlugins(const char* rootDir, bool isReload = false);
 
     static void unloadPlugins();
 

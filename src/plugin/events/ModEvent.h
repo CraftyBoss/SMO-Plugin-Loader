@@ -28,6 +28,7 @@ static ALWAYS_INLINE size_t getEventAddress(std::function<T(U...)> f) {
 }
 
 // FIXME: ALl events that inherit from this will use the same static method, instead of a unique one
+template <typename Derived>
 struct EventHolderMod {
 protected:
     using BaseEventFunc = void();
@@ -147,7 +148,7 @@ public:
     }
 };
 
-template<typename T, typename ...Args>
+template<typename Derived, typename T, typename ...Args>
 struct EventHolderModArgsR {
 protected:
     using BaseEventFunc = bool(T& returnValue, Args... args);
@@ -205,9 +206,51 @@ public:
 
         return result;
     }
+
+    static void RemoveAllEvents() {
+        sead::ScopedCurrentHeapSetter setter(PluginLoader::getHeap());
+        auto& events = GetEvents();
+        events.clear();
+
+        // reset buffer
+        events.freeBuffer();
+        events.allocBuffer(100, nullptr);
+    }
+
+    static void RemoveEvents(const char* key) {
+        sead::ScopedCurrentHeapSetter setter(PluginLoader::getHeap());
+        auto& eventMap = GetEvents();
+
+        if(!eventMap.find(key)) {
+            Logger::log("Unable to find events. Key: %s\n", key);
+            return;
+        }
+
+        eventMap.erase(key); // remove whole node
+    }
+
+    static bool RemoveEvent(const char* key, int idx) {
+        sead::ScopedCurrentHeapSetter setter(PluginLoader::getHeap());
+        auto& eventMap = GetEvents();
+
+        if(!eventMap.find(key)) {
+            Logger::log("Unable to find events. Key: %s\n", key);
+            return false;
+        }
+        EventContainer &events = eventMap.find(key)->value();
+
+        if(events.size() > idx) {
+            events.erase(events.begin() + idx);
+            Logger::log("Removed event at Index: %d\n", idx);
+            return true;
+        }else {
+            Logger::log("Attempting to remove event out of bounds!\n");
+            return false;
+        }
+    }
 };
 
-template<typename ...Args>
+template<typename Derived, typename ...Args>
 struct EventHolderModArgs {
 protected:
     using BaseEventFunc = void(Args... args);
@@ -249,6 +292,7 @@ protected:
 
         return events;
     }
+
 public:
     static void RunEvents(Args... args) {
         auto& eventMap = GetEvents();
@@ -260,9 +304,52 @@ public:
             }
         });
     }
+
+    static void RemoveAllEvents() {
+        sead::ScopedCurrentHeapSetter setter(PluginLoader::getHeap());
+        auto& events = GetEvents();
+        events.clear();
+
+        // reset buffer
+        events.freeBuffer();
+        events.allocBuffer(100, nullptr);
+    }
+
+    static void RemoveEvents(const char* key) {
+        sead::ScopedCurrentHeapSetter setter(PluginLoader::getHeap());
+        auto& eventMap = GetEvents();
+
+        if(!eventMap.find(key)) {
+            Logger::log("Unable to find events. Key: %s\n", key);
+            return;
+        }
+
+        eventMap.erase(key); // remove whole node
+    }
+
+    static bool RemoveEvent(const char* key, int idx) {
+        sead::ScopedCurrentHeapSetter setter(PluginLoader::getHeap());
+        auto& eventMap = GetEvents();
+
+        if(!eventMap.find(key)) {
+            Logger::log("Unable to find events. Key: %s\n", key);
+            return false;
+        }
+        EventContainer &events = eventMap.find(key)->value();
+
+        if(events.size() > idx) {
+            events.erase(events.begin() + idx);
+            Logger::log("Removed event at Index: %d\n", idx);
+            return true;
+        }else {
+            Logger::log("Attempting to remove event out of bounds!\n");
+            return false;
+        }
+    }
+
 };
 
-template<typename R>
+template<typename Derived, typename R>
 struct EventHolderModR {
 protected:
     using BaseEventFunc = void(R& returnValue);
@@ -306,6 +393,8 @@ protected:
     }
 
 public:
+
+    // TODO: add exception catching (wont work here until exception handler supports variable capturing in lambdas
     static R RunEvents() {
         R result = {};
         auto& eventMap = GetEvents();
@@ -319,4 +408,48 @@ public:
         });
         return result;
     }
+
+    static void RemoveAllEvents() {
+        sead::ScopedCurrentHeapSetter setter(PluginLoader::getHeap());
+        auto& events = GetEvents();
+        events.clear();
+
+        // reset buffer
+        events.freeBuffer();
+        events.allocBuffer(100, nullptr);
+    }
+
+    static void RemoveEvents(const char* key) {
+        sead::ScopedCurrentHeapSetter setter(PluginLoader::getHeap());
+        auto& eventMap = GetEvents();
+
+        if(!eventMap.find(key)) {
+            Logger::log("Unable to find events. Key: %s\n", key);
+            return;
+        }
+
+        eventMap.erase(key); // remove whole node
+    }
+
+    static bool RemoveEvent(const char* key, int idx) {
+        sead::ScopedCurrentHeapSetter setter(PluginLoader::getHeap());
+        auto& eventMap = GetEvents();
+
+        if(!eventMap.find(key)) {
+            Logger::log("Unable to find events. Key: %s\n", key);
+            return false;
+        }
+        EventContainer &events = eventMap.find(key)->value();
+
+        if(events.size() > idx) {
+            events.erase(events.begin() + idx);
+            Logger::log("Removed event at Index: %d\n", idx);
+            return true;
+        }else {
+            Logger::log("Attempting to remove event out of bounds!\n");
+            return false;
+        }
+    }
+
+
 };

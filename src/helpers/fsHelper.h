@@ -31,7 +31,7 @@ namespace FsHelper {
 
     long getFileSize(const char *path);
 
-    const char* getFileName(char *path);
+    const char* getFileName(const char *path);
 
     bool isFileExist(const char *path);
 }

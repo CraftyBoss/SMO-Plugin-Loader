@@ -22,10 +22,11 @@ class PluginData {
     }
 
     // plugin func signatures
-    typedef void (*PluginMain)(LoaderCtx& ctx);
+    typedef bool (*PluginMain)(LoaderCtx& ctx);
 
 public:
-    char mName[0x40] = {};
+    char mFilePath[0x40] = {};
+    char mFileName[0x30] = {};
     Sha256Hash mPluginHash = {};
 
     u8* mFileData = nullptr;
@@ -37,8 +38,8 @@ public:
     u8* mBssData = nullptr;
     size_t mBssSize = 0;
 
-    sead::Heap* mHeap;
+    sead::Heap* mHeap = nullptr;
 
-    void runPluginMain(LoaderCtx& ctx);
+    bool runPluginMain(LoaderCtx& ctx);
 
 };

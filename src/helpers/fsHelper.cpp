@@ -93,18 +93,18 @@ namespace FsHelper {
         return result;
     }
 
-    const char* getFileName(char* path) {
-        if(path == nullptr)
-            return nullptr;
+    const char* getFileName(const char* path) {
+//        if(path == nullptr)
+//            return nullptr;
+//
+//        const char* pFileName = path;
+//        for(const char* pCur = path; *pCur != '\0'; pCur++)
+//        {
+//            if( *pCur == '/' || *pCur == '\\' )
+//                pFileName = pCur+1;
+//        }
 
-        char* pFileName = path;
-        for(char* pCur = path; *pCur != '\0'; pCur++)
-        {
-            if( *pCur == '/' || *pCur == '\\' )
-                pFileName = pCur+1;
-        }
-
-        return pFileName;
+        return strrchr(path, '/') + 1;
     }
 
     bool isFileExist(const char *path) {
@@ -143,7 +143,7 @@ namespace FsHelper {
         }
 
         nn::fs::DirectoryHandle handle{};
-        result = nn::fs::OpenDirectory(&handle, dir, nn::fs::OpenDirectoryMode_File);
+        result = nn::fs::OpenDirectory(&handle, dir, nn::fs::OpenDirectoryMode_All);
         if(result.isFailure()) {
             Logger::log("Failed to open directory!\n");
             return nullptr;
@@ -174,16 +174,85 @@ namespace FsHelper {
 
             Logger::log("File Name: %s Size: %d Type: %x\n", entry.m_Name, entry.m_FileSize, entry.m_Type);
 
-            if(ext && !StringHelper::isEndWithString(entry.m_Name, ext)) {
-                Logger::log("File extension does not match! Ext: %s\n", ext);
+            size_t pathBufSize = strlen(dir)+strlen(entry.m_Name)+2;
+            char dirPathBuffer[pathBufSize];
+            snprintf(dirPathBuffer, pathBufSize, "%s/%s", dir, entry.m_Name);
+
+            nn::fs::DirectoryEntryType entryType;
+            result = nn::fs::GetEntryType(&entryType, dirPathBuffer);
+
+            if(result.isFailure()) {
+                Logger::log("Failed to get Entry Type.\n");
                 continue;
             }
 
-            snprintf(fileEntry.fullPath, sizeof(fileEntry.fullPath), "%s/%s", dir, entry.m_Name);
-            fileEntry.bufSize = entry.m_FileSize;
+            switch (entryType) {
+            case nn::fs::DirectoryEntryType_Directory: {
+                nn::Result subResult = {};
 
-            loadFileFromPath(fileEntry);
-            loadedFileCount++;
+                nn::fs::DirectoryHandle subdirHandle{};
+                subResult = nn::fs::OpenDirectory(&subdirHandle, dirPathBuffer, nn::fs::OpenDirectoryMode_File);
+                if(subResult.isFailure()) {
+                    Logger::log("Failed to open directory!\n");
+                    continue;
+                }
+
+                s64 subdirFileCount = 0;
+                subResult = nn::fs::GetDirectoryEntryCount(&subdirFileCount, subdirHandle);
+                if(subResult.isFailure()) {
+                    Logger::log("Failed to get entry count!\n");
+                    continue;
+                }
+
+                auto* subdirEntries = (nn::fs::DirectoryEntry*)alloca(sizeof(nn::fs::DirectoryEntry)*subdirFileCount);
+
+                s64 subdirEntryCount = 0;
+                subResult = nn::fs::ReadDirectory(&subdirEntryCount, subdirEntries, subdirHandle, subdirFileCount);
+                if(subResult.isFailure()) {
+                    Logger::log("Failed to Read Directories!\n");
+                    continue;
+                }
+
+                for (int j = 0; j < subdirFileCount; ++j) {
+                    nn::fs::DirectoryEntry& subDirEntry = subdirEntries[j];
+                    Logger::log("Sub Directory File Name: %s Size: %d Type: %x\n", subDirEntry.m_Name, subDirEntry.m_FileSize, subDirEntry.m_Type);
+
+                    if(ext && !StringHelper::isEndWithString(subDirEntry.m_Name, ext)) {
+                        Logger::log("File extension does not match! Ext: %s\n", ext);
+                        continue;
+                    }
+
+                    sprintf(fileEntry.fullPath, "%s/%s", dirPathBuffer, subDirEntry.m_Name);
+                    fileEntry.bufSize = subDirEntry.m_FileSize;
+
+                    Logger::log("Full Path: %s\n", fileEntry.fullPath);
+
+                    loadFileFromPath(fileEntry);
+                    loadedFileCount++;
+                }
+
+                break;
+            }
+            case nn::fs::DirectoryEntryType_File: {
+
+                if(ext && !StringHelper::isEndWithString(entry.m_Name, ext)) {
+                    Logger::log("File extension does not match! Ext: %s\n", ext);
+                    continue;
+                }
+
+                strncpy(fileEntry.fullPath, dirPathBuffer, sizeof(fileEntry.fullPath));
+                fileEntry.bufSize = entry.m_FileSize;
+
+                loadFileFromPath(fileEntry);
+                loadedFileCount++;
+                break;
+            }
+            default:
+                Logger::log("Unknown Open Directory Mode!\n");
+                break;
+            }
+
+
         }
 
         auto* loadedEntries = (DirFileEntry*)nn::init::GetAllocator()->Allocate(sizeof(DirFileEntry) * loadedFileCount);

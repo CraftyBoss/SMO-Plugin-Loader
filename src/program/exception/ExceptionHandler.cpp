@@ -144,12 +144,17 @@ namespace handler {
 
         static void printStackTrace(const ExceptionInfo* info, nn::diag::ModuleInfo* moduleInfos,
                                     int moduleCount, bool printPCLR = true, int traceLength = -1) {
-            if(printPCLR) {
+            if(printPCLR && info) {
                 printTraceEntry("PC", info->pc, moduleInfos, moduleCount);
                 printTraceEntry("LR", info->lr, moduleInfos, moduleCount);
             }
 
-            auto frame = (stack_frame*)info->fp;
+            stack_frame* frame;
+            if(info)
+                frame = (stack_frame*)info->fp;
+            else
+                asm("mov %0, fp" : "=r"(frame));
+
             stack_frame* prevFrame = nullptr;
             int index = 0;
             while (frame != nullptr && frame != prevFrame) {
@@ -389,6 +394,16 @@ namespace handler {
         int moduleCount = nn::diag::GetAllModuleInfo(&moduleInfos, moduleBuffer, bufSize);
 
         detail::printStackTrace(&info, moduleInfos, moduleCount, printPCLR, traceLength);
+    }
+
+    void printStackTraceNoInfo(int traceLength, bool printPCLR) {
+        nn::diag::ModuleInfo* moduleInfos;
+        uintptr_t bufSize = nn::diag::GetRequiredBufferSizeForGetAllModuleInfo();
+        void* moduleBuffer = alloca(bufSize);
+
+        int moduleCount = nn::diag::GetAllModuleInfo(&moduleInfos, moduleBuffer, bufSize);
+
+        detail::printStackTrace(nullptr, moduleInfos, moduleCount, printPCLR, traceLength);
     }
 
     bool getAddrModuleName(char* outName, uintptr_t addr) {

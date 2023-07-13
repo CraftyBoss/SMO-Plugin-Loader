@@ -53,5 +53,6 @@ namespace handler {
     void installExceptionHandler(const CatchFunc& handler);
     void printCrashReport(const ExceptionInfo& info);
     void printStackTrace(const ExceptionInfo& info, int traceLength = -1, bool printPCLR = true);
+    void printStackTraceNoInfo(int traceLength = -1, bool printPCLR = true);
     bool getAddrModuleName(char* outName, uintptr_t addr);
 } // namespace handler

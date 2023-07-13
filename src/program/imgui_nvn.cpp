@@ -175,11 +175,20 @@ void nvnImGui::addDrawFunc(ProcDrawFunc func) {
 
 void nvnImGui::procDraw() {
 
+
     ImguiNvnBackend::newFrame();
     ImGui::NewFrame();
 
-    for (size_t i = 0; i < drawQueueCount; i++) {
-        drawQueue[i]();
+
+    static bool isEnabled = false;
+    if(InputHelper::isPressPadLeft()) {
+        isEnabled = !isEnabled;
+    }
+    // only use draw queue if enabled
+    if(isEnabled) {
+        for (size_t i = 0; i < drawQueueCount; i++) {
+            drawQueue[i]();
+        }
     }
 
     ImGui::Render();

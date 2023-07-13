@@ -27,9 +27,32 @@
 #include "game/HakoniwaSequence/HakoniwaSequence.h"
 #include "game/GameData/GameDataFunction.h"
 
+#include <al/Library/File/FIleEntry.h>
 #include <al/Library/File/FileLoader.h>
+#include <nifm.h>
 
 #define IMGUI_ENABLED true
+
+//#define DEBUG
+
+char socketPool[0x600000 + 0x20000] __attribute__((aligned(0x1000)));
+
+void initSocket() {
+    nn::nifm::Initialize();
+
+    nn::socket::Config config;
+
+    config.pool = socketPool;
+    config.poolSize = 0x600000;
+    config.allocPoolSize = 0x20000;
+    config.concurLimit = 0xE;
+
+    nn::socket::Initialize(config);
+
+    nn::nifm::SubmitNetworkRequest();
+
+    while (nn::nifm::IsNetworkRequestOnHold()) {}
+}
 
 void drawSizeInfo(float curSize, float maxSize, const char* name) {
 
@@ -93,18 +116,26 @@ void drawHeapInfoRecursive(sead::Heap *heap) {
     }
 }
 
+static bool isLogFileLoad = false;
+
 void drawPluginDebugWindow() {
-    ImGui::SetNextWindowPos(ImVec2(500, 400), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(400, 200), ImGuiCond_FirstUseEver);
 
     ImGui::Begin("Plugin Info Window");
 
     drawHeapInfo(PluginLoader::getHeap());
 
+    if(ImGui::Button("Toggle File Load Logging")) {
+        isLogFileLoad = !isLogFileLoad;
+    }
+    ImGui::SameLine();
+    ImGui::Text("%s", isLogFileLoad ? "Enabled" : "Disabled");
+
     if(!PluginLoader::isPluginsLoaded()) {
         if(ImGui::Button("Load Plugins")) {
             Logger::log("Loading Game Plugins.\n");
-            PluginLoader::loadPlugins("sd:/smo/PluginData");
+            PluginLoader::loadPlugins("sd:/smo/PluginData", true);
         }
         ImGui::End();
         return;
@@ -247,13 +278,13 @@ HOOK_DEFINE_TRAMPOLINE(CreateFileDeviceMgr) {
         sead::NinSDFileDevice *sdFileDevice = new sead::NinSDFileDevice();
 
         thisPtr->mount(sdFileDevice);
+
     }
 };
 
 HOOK_DEFINE_TRAMPOLINE(RedirectFileDevice) {
     static sead::FileDevice *
     Callback(sead::FileDeviceMgr *thisPtr, sead::SafeString &path, sead::BufferedSafeString *pathNoDrive) {
-
         sead::FixedSafeString<32> driveName;
         sead::FileDevice *device;
 
@@ -289,33 +320,20 @@ HOOK_DEFINE_TRAMPOLINE(RedirectFileDevice) {
     }
 };
 
-HOOK_DEFINE_TRAMPOLINE(FileLoaderLoadArc) {
-    static sead::ArchiveRes *
-    Callback(al::FileLoader *thisPtr, sead::SafeString &path, const char *ext, sead::FileDevice *device) {
-
-        // Logger::log("Path: %s\n", path.cstr());
-
-        sead::FileDevice *sdFileDevice = sead::FileDeviceMgr::instance()->findDevice("sd");
-
-        if (sdFileDevice && sdFileDevice->isExistFile(path)) {
-
-            Logger::log("Found File on SD! Path: %s\n", path.cstr());
-
-            device = sdFileDevice;
-        }
-
-        return Orig(thisPtr, path, ext, device);
-    }
-};
-
 sead::FileDevice *tryFindNewDevice(sead::SafeString &path, sead::FileDevice *orig) {
     sead::FileDevice *sdFileDevice = sead::FileDeviceMgr::instance()->findDevice("sd");
 
     if (sdFileDevice && sdFileDevice->isExistFile(path))
         return sdFileDevice;
-
     return orig;
 }
+
+HOOK_DEFINE_TRAMPOLINE(FileLoaderLoadArc) {
+    static sead::ArchiveRes *
+    Callback(al::FileLoader *thisPtr, sead::SafeString &path, const char *ext, sead::FileDevice *device) {
+        return Orig(thisPtr, path, ext, tryFindNewDevice(path, device));
+    }
+};
 
 HOOK_DEFINE_TRAMPOLINE(FileLoaderIsExistFile) {
     static bool Callback(al::FileLoader *thisPtr, sead::SafeString &path, sead::FileDevice *device) {
@@ -326,6 +344,24 @@ HOOK_DEFINE_TRAMPOLINE(FileLoaderIsExistFile) {
 HOOK_DEFINE_TRAMPOLINE(FileLoaderIsExistArchive) {
     static bool Callback(al::FileLoader *thisPtr, sead::SafeString &path, sead::FileDevice *device) {
         return Orig(thisPtr, path, tryFindNewDevice(path, device));
+    }
+};
+
+HOOK_DEFINE_TRAMPOLINE(FileLoaderThreadLoadFileHook) {
+    static void Callback(al::FileLoaderThread *thisPtr, al::FileEntryBase* fileEntry) {
+
+        if(isLogFileLoad)
+            Logger::log("Loading File: %s\n", fileEntry->mFileName.cstr());
+
+        Orig(thisPtr, fileEntry);
+    }
+};
+
+HOOK_DEFINE_TRAMPOLINE(CheckPlayerDamageHook) {
+    static void Callback(GameDataHolderWriter writer) {
+        // TODO: add an argument to OnPlayerDamage for if the player is dead
+        Orig(writer);
+        ModEvent::OnPlayerDamage::RunEvents();
     }
 };
 
@@ -355,11 +391,22 @@ extern "C" void exl_main(void *x0, void *x1) {
     });
 
     runCodePatches();
-    Logger::instance().init(LOGGER_IP, 3080);
+
+    initSocket();
+
+#if ISEMU
+    Logger::setLogType(LoggerType::Emulator);
+#elseif DEBUG
+    Logger::setLogType(LoggerType::Network);
+#else
+    Logger::setLogType(LoggerType::ImGui);
+#endif
 
     // event system
 
     EventSystem::installAllEvents();
+
+    CheckPlayerDamageHook::InstallAtSymbol("_ZN16GameDataFunction12damagePlayerE20GameDataHolderWriter");
 
     GameSystemEvent::Init::addEvent(&gameSystemInitPrefix, nullptr);
 
@@ -371,17 +418,19 @@ extern "C" void exl_main(void *x0, void *x1) {
 
     // SD File Redirection
 
-    RedirectFileDevice::InstallAtOffset(0x76CFE0);
-    FileLoaderLoadArc::InstallAtOffset(0xA5EF64);
-    CreateFileDeviceMgr::InstallAtOffset(0x76C8D4);
-    FileLoaderIsExistFile::InstallAtSymbol(
-            "_ZNK2al10FileLoader11isExistFileERKN4sead14SafeStringBaseIcEEPNS1_10FileDeviceE");
-    FileLoaderIsExistArchive::InstallAtSymbol(
-            "_ZNK2al10FileLoader14isExistArchiveERKN4sead14SafeStringBaseIcEEPNS1_10FileDeviceE");
+    RedirectFileDevice::InstallAtSymbol("_ZNK4sead13FileDeviceMgr18findDeviceFromPathERKNS_14SafeStringBaseIcEEPNS_22BufferedSafeStringBaseIcEE");
+    FileLoaderLoadArc::InstallAtSymbol("_ZN2al10FileLoader16loadArchiveLocalERKN4sead14SafeStringBaseIcEEPKcPNS1_10FileDeviceE");
+    CreateFileDeviceMgr::InstallAtSymbol("_ZN4sead13FileDeviceMgrC2Ev");
+    FileLoaderIsExistFile::InstallAtSymbol("_ZNK2al10FileLoader11isExistFileERKN4sead14SafeStringBaseIcEEPNS1_10FileDeviceE");
+    FileLoaderIsExistArchive::InstallAtSymbol("_ZNK2al10FileLoader14isExistArchiveERKN4sead14SafeStringBaseIcEEPNS1_10FileDeviceE");
 
     // Sead Debugging Overriding
 
-    ReplaceSeadPrint::InstallAtOffset(0xB59E28);
+    ReplaceSeadPrint::InstallAtSymbol("_ZN4sead6system5PrintEPKcz");
+
+    // File Load Logging
+
+    FileLoaderThreadLoadFileHook::InstallAtSymbol("_ZN2al16FileLoaderThread15requestLoadFileEPNS_13FileEntryBaseE");
 
     // ImGui Hooks
 #if IMGUI_ENABLED
@@ -389,6 +438,7 @@ extern "C" void exl_main(void *x0, void *x1) {
 
     nvnImGui::addDrawFunc(drawPluginDebugWindow);
 
+    // TODO: add plugin window drawing visibility toggle
     nvnImGui::addDrawFunc([]() {
         ModEvent::ImguiDraw::RunEvents();
     });

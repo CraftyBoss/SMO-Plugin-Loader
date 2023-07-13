@@ -6,9 +6,10 @@
 #include "logger/Logger.hpp"
 #include <cmath>
 #include <imgui_internal.h>
+#include <oe.h>
 
-#include "nn/os.h"
 #include "nn/hid.h"
+#include "nn/os.h"
 #include "nn/pl.h"
 
 #include "helpers/InputHelper.h"
@@ -510,6 +511,20 @@ namespace ImguiNvnBackend {
 
     }
 
+    void updateTouch(ImGuiIO &io) {
+        static s32 touchPosX = 0;
+        static s32 touchPosY = 0;
+        InputHelper::getTouchCoords(&touchPosX, &touchPosY);
+        io.AddMousePosEvent(touchPosX, touchPosY);
+
+        ImGuiMouseButton button = ImGuiMouseButton_Left;
+
+        if (InputHelper::isPressTouch())
+            io.AddMouseButtonEvent(button, true);
+        else if (InputHelper::isReleaseTouch())
+            io.AddMouseButtonEvent(button, false);
+    }
+
     void updateMouse(ImGuiIO &io) {
         ImVec2 mousePos(0, 0);
         InputHelper::getMouseCoords(&mousePos.x, &mousePos.y);
@@ -533,11 +548,28 @@ namespace ImguiNvnBackend {
     }
 
     void updateKeyboard(ImGuiIO &io) {
-        for (auto [im_k, nx_k]: key_mapping) {
-            if (InputHelper::isKeyPress((nn::hid::KeyboardKey) nx_k)) {
-                io.AddKeyEvent((ImGuiKey) im_k, true);
-            } else if (InputHelper::isKeyRelease((nn::hid::KeyboardKey) nx_k)) {
-                io.AddKeyEvent((ImGuiKey) im_k, false);
+        io.AddKeyEvent(ImGuiMod_Shift, InputHelper::isModifierActive(nn::hid::KeyboardModifier::Shift));
+        io.AddKeyEvent(ImGuiMod_Ctrl, InputHelper::isModifierActive(nn::hid::KeyboardModifier::Control));
+        io.AddKeyEvent(ImGuiMod_Super, InputHelper::isModifierActive(nn::hid::KeyboardModifier::Gui));
+        io.AddKeyEvent(ImGuiMod_Alt, InputHelper::isModifierActive(nn::hid::KeyboardModifier::LeftAlt) ||
+                                         InputHelper::isModifierActive(nn::hid::KeyboardModifier::RightAlt));
+
+        bool isAltCode = InputHelper::isModifierActive(nn::hid::KeyboardModifier::CapsLock) ||
+                         InputHelper::isModifierActive(nn::hid::KeyboardModifier::Shift);
+        bool isNumLock = InputHelper::isModifierActive(nn::hid::KeyboardModifier::NumLock);
+
+        for (auto [im_int, nx_int]: key_mapping) {
+            auto nx_k = (nn::hid::KeyboardKey)nx_int;
+            auto im_k = (ImGuiKey)im_int;
+
+            if (InputHelper::isKeyPress(nx_k)) {
+                io.AddKeyEvent(im_k, true);
+
+                char keyCode = getKeyCode(im_k, isAltCode, isNumLock);
+                if(keyCode != 0)
+                    io.AddInputCharacter(keyCode);
+            } else if (InputHelper::isKeyRelease(nx_k)) {
+                io.AddKeyEvent(im_k, false);
             }
         }
     }
@@ -554,12 +586,18 @@ namespace ImguiNvnBackend {
     void updateInput() {
 
         ImGuiIO &io = ImGui::GetIO();
-        updateKeyboard(io);
-        updateMouse(io);
+        io.MouseDrawCursor = InputHelper::isMouseConnected();
 
-        if (InputHelper::isInputToggled()) {
+        updateKeyboard(io);
+
+        if(io.MouseDrawCursor)
+            updateMouse(io);
+
+        if(nn::oe::GetOperationMode() == nn::oe::OperationMode_Handheld)
+            updateTouch(io);
+
+        if (InputHelper::isInputToggled())
             updateGamepad(io);
-        }
     }
 
     void updateProjection(ImVec2 dispSize) {

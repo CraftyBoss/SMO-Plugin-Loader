@@ -40,28 +40,23 @@ struct Name : public EventHolderHookR<Name, ReturnType> { \
 };
 
 #define CREATE_MOD_EVENT(Name) \
-struct Name : public EventHolderMod { \
-    static COMPILE_RULES bool addEvent(EventHolderMod::BaseEventFunc event) { return EventHolderMod::AddEvent(event); } \
-    static void clearEvents() { EventHolderMod::RemoveAllEvents(); }                                                    \
-    static void removeEvents(const char* key) { EventHolderMod::RemoveEvents(key); }                                    \
+struct Name : public EventHolderMod<Name> { \
+    static COMPILE_RULES bool addEvent(EventHolderMod<Name>::BaseEventFunc event) { return EventHolderMod<Name>::AddEvent(event); } \
 };
 
 #define CREATE_MOD_EVENT_ARGSR(Name, ReturnType, ...) \
-struct Name : public EventHolderModArgsR<ReturnType, __VA_ARGS__> { \
-    static COMPILE_RULES bool addEvent(EventHolderModArgsR<ReturnType, __VA_ARGS__>::BaseEventFunc& event) { return EventHolderModArgsR<ReturnType, __VA_ARGS__>::AddEvent(event); } \
-    static void clearEvents() { EventHolderModArgsR<ReturnType, __VA_ARGS__>::RemoveAllEvents(); }                                                      \
+struct Name : public EventHolderModArgsR<Name, ReturnType, __VA_ARGS__> { \
+    static COMPILE_RULES bool addEvent(EventHolderModArgsR<Name, ReturnType, __VA_ARGS__>::BaseEventFunc& event) { return EventHolderModArgsR<Name, ReturnType, __VA_ARGS__>::AddEvent(event); } \
 };
 
 #define CREATE_MOD_EVENT_ARGS(Name, ...) \
-struct Name : public EventHolderModArgs<__VA_ARGS__> { \
-    static COMPILE_RULES bool addEvent(EventHolderModArgs<__VA_ARGS__>::BaseEventFunc& event) { return EventHolderModArgs<__VA_ARGS__>::AddEvent(event); } \
-    static void clearEvents() { EventHolderModArgs<__VA_ARGS__>::RemoveAllEvents(); }                                         \
+struct Name : public EventHolderModArgs<Name, __VA_ARGS__> { \
+    static COMPILE_RULES bool addEvent(EventHolderModArgs<Name, __VA_ARGS__>::BaseEventFunc& event) { return EventHolderModArgs<Name, __VA_ARGS__>::AddEvent(event); }  \
 };
 
 #define CREATE_MOD_EVENT_R(Name, ReturnType) \
-struct Name : public EventHolderModR<ReturnType> { \
-    static COMPILE_RULES bool addEvent(EventHolderModR<ReturnType>::BaseEventFunc& event) { return EventHolderModR<ReturnType>::AddEvent(event); } \
-    static void clearEvents() { EventHolderModR<ReturnType>::RemoveAllEvents(); }                                             \
+struct Name : public EventHolderModR<Name, ReturnType> { \
+    static COMPILE_RULES bool addEvent(EventHolderModR<Name, ReturnType>::BaseEventFunc& event) { return EventHolderModR<Name, ReturnType>::AddEvent(event); }  \
 };
 
 #define INSTALL_EVENT(Name, Type) \

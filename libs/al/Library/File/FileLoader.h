@@ -10,6 +10,9 @@ namespace  al {
 }
 
 namespace al {
+
+    class FileLoaderThread;
+
     class FileLoader {
     public:
         FileLoader(int);

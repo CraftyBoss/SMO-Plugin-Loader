@@ -33,6 +33,8 @@ public:
 
     static bool isKeyRelease(nn::hid::KeyboardKey key);
 
+    static bool isModifierActive(nn::hid::KeyboardModifier modifier);
+
     // mouse inputs
 
     static bool isMouseHold(nn::hid::MouseButton button);
@@ -41,11 +43,23 @@ public:
 
     static bool isMouseRelease(nn::hid::MouseButton button);
 
+    static bool isMouseConnected();
+
     // mouse coordinate getters
 
     static void getMouseCoords(float *x, float *y);
 
     static void getScrollDelta(float *x, float *y);
+
+    // touch input getters
+
+    static bool getTouchCoords(s32* x, s32* y);
+
+    static bool isHoldTouch();
+
+    static bool isPressTouch();
+
+    static bool isReleaseTouch();
 
     // specific button funcs
 
@@ -121,19 +135,16 @@ public:
 
     static bool isReleasePadDown() { return isButtonRelease(nn::hid::NpadButton::Down); }
 
-    static bool isHoldStickL() { return isButtonHold(nn::hid::NpadButton::StickL); }
+    static bool isPressLeftStick() { return isButtonPress(nn::hid::NpadButton::StickL); }
 
-    static bool isPressStickL() { return isButtonPress(nn::hid::NpadButton::StickL); }
+    static bool isHoldLeftStick() { return isButtonHold(nn::hid::NpadButton::StickL); }
 
-    static bool isReleaseStickL() { return isButtonRelease(nn::hid::NpadButton::StickL); }
+    static bool isPressRightStick() { return isButtonPress(nn::hid::NpadButton::StickR); }
 
-    static bool isHoldStickR() { return isButtonHold(nn::hid::NpadButton::StickR); }
+    static bool isHoldRightStick() { return isButtonHold(nn::hid::NpadButton::StickR); }
 
-    static bool isPressStickR() { return isButtonPress(nn::hid::NpadButton::StickR); }
 
-    static bool isReleaseStickR() { return isButtonRelease(nn::hid::NpadButton::StickR); }
-
-private:
+    //private:
     static bool tryGetContState(nn::hid::NpadBaseState *state, ulong port);
 
     static char getKeyValue(nn::hid::KeyboardKey key, bool isUpper, bool isModifier);
@@ -146,6 +157,9 @@ private:
 
     static nn::hid::MouseState curMouseState;
     static nn::hid::MouseState prevMouseState;
+
+    static nn::hid::TouchScreenState<1> curTouchState;
+    static nn::hid::TouchScreenState<1> prevTouchState;
 
     static ulong selectedPort;
 
